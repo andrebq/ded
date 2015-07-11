@@ -87,14 +87,18 @@ func appMain(driver gxui.Driver) {
 	el.AddChild(dedEditor)
 	el.SetChildSize(dedEditorBar, math.Size{H: dedEditorBar.LineHeight()})
 
-	editorfs := NewEditorFS(dedEditor, dedEditorBar)
-	srv, err := vfs.NewTCPServer(&vfs.Fileserver{editorfs}, "0.0.0.0:5640")
-	if err != nil {
-		log.Printf("Error starting server: %v", err)
-		window.Close()
-		return
-	}
-	window.OnClose(func() { srv.Close() })
+	/*
+		TODO(andre): this code requires the proper namespace implementation,
+		don't expose the FS.
+		editorfs := NewEditorFS(dedEditor, dedEditorBar)
+		srv, err := vfs.NewTCPServer(&vfs.Fileserver{editorfs}, "0.0.0.0:5640")
+		if err != nil {
+			log.Printf("Error starting server: %v", err)
+			window.Close()
+			return
+		}
+		window.OnClose(func() { srv.Close() })
+	*/
 
 	ll := theme.CreateLinearLayout()
 	ll.SetDirection(gxui.TopToBottom)
