@@ -15,23 +15,23 @@ type (
 		name   string
 		childs []*node
 		file   File
+		leaf   bool
 	}
 
 	File interface {
+		Open() error
+		Close() error
 		Stat() (FileInfo, error)
-		Seek(offset int64) (int64, error)
+		Seek(offset int64, whence int) (int64, error)
 		Read(out []byte) (int, error)
 		Write(in []byte) (int, error)
+		Readdir() ([]FileInfo, error)
+		Walk(n string) (File, error)
 	}
 
 	FileRef struct {
 		File
 		AbsPath string
-	}
-
-	Dir interface {
-		Readdir() ([]FileInfo, error)
-		Walk(n string) (File, error)
 	}
 
 	FileInfo struct {
@@ -65,7 +65,8 @@ func (n *Namespace) Mount(name string, dir string, file File) error {
 		}
 	}
 
-	return root.AddChild(name, file)
+	_, err = root.AddChild(name, file)
+	return err
 }
 
 /** Walk search the namespace for the path p and returns the file associated with
@@ -73,7 +74,7 @@ the path (if any) or an error indicating that the path couldn't be found.
 
 The returned reference holds the absolute path used to reach it.
 */
-func (n *Namespace) Walk(p string) (FileRef, error) {
+func (n *Namespace) Open(p string) (FileRef, error) {
 	if n.root == nil {
 		return FileRef{}, errors.New("namespace not ready")
 	}
@@ -81,10 +82,15 @@ func (n *Namespace) Walk(p string) (FileRef, error) {
 	root := n.root
 	var err error
 	for _, part := range strings.Split(p, "/") {
-		root, err = root.Walk(part)
+		root, err = root.Open(part)
 		if err != nil {
 			return FileRef{}, err
 		}
+	}
+
+	err = root.file.Open()
+	if err != nil {
+		return FileRef{}, err
 	}
 	return FileRef{
 		File:    root.file,
@@ -114,8 +120,43 @@ func (n *node) Walk(name string) (*node, error) {
 		return nil, errors.New("path not found")
 	}
 
-	// not one of my childs and also not a virtual directory
-	return nil, errors.New("path not found")
+	f, err := n.file.Walk(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return n.AddChild(name, f)
+}
+
+func (n *node) Open(name string) (*node, error) {
+	if len(name) == 0 || name == "." {
+		return n, nil
+	}
+	for _, c := range n.childs {
+		if c.name == name {
+			return c, nil
+		}
+	}
+
+	if n.file == nil {
+		return nil, errors.New("path not found")
+	}
+
+	f, err := n.file.Walk(name)
+	if err != nil {
+		return nil, err
+	}
+
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	return &node{
+		name: name,
+		file: f,
+		leaf: st.IsDir,
+	}, nil
 }
 
 /** AddChild exposes f as a child of n with the given name.
@@ -125,40 +166,38 @@ if there is no virtual file or if the virtual file is a virtual directory.
 
 The virtual directory (if any) isn't touched, the requirement exists just to avoid
 add a child file to a leaf node.*/
-func (n *node) AddChild(name string, f File) error {
+func (n *node) AddChild(name string, f File) (*node, error) {
 	if n.isLeaf() {
-		return errors.New("cannot add child to a leaf")
+		return nil, errors.New("cannot add child to a leaf")
 	}
 
 	nnode := &node{
 		name: name,
 		file: f,
 	}
+	if f == nil {
+		nnode.leaf = false
+	} else {
+		stat, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+		nnode.leaf = !stat.IsDir
+	}
 	for i, c := range n.childs {
 		if c.name == name {
 			n.childs[i] = nnode
-			return nil
+			return nnode, nil
 		}
 	}
 	// not a replacement, add new
-	n.childs = append(n.childs, &node{
-		name: name,
-		file: f,
-	})
-	return nil
+	n.childs = append(n.childs, nnode)
+	return nnode, nil
 }
 
 // check if the node points to a virtual file
 func (n *node) isLeaf() bool {
-	if n.file == nil {
-		return false
-	}
-	switch n.file.(type) {
-	case Dir:
-		return true
-	default:
-		return false
-	}
+	return n.leaf
 }
 
 // fileInfo returns some file information about this node

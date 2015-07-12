@@ -47,7 +47,7 @@ func (m *Memdir) Stat() (FileInfo, error) {
 	}, nil
 }
 
-func (m *Memdir) Seek(_ int64) (int64, error) {
+func (m *Memdir) Seek(_ int64, _ int) (int64, error) {
 	return 0, errors.New("cannot seek from memdir")
 }
 
@@ -57,6 +57,23 @@ func (m *Memdir) Read(_ []byte) (int, error) {
 
 func (m *Memdir) Write(_ []byte) (int, error) {
 	return 0, errors.New("cannot write to memdir")
+}
+
+func (m *Memdir) Open() error {
+	return nil
+}
+
+func (m *Memdir) Close() error {
+	return nil
+}
+
+func (m *Memdir) AddFile(f File) error {
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	err = m.ns.Mount(stat.Name, "", f)
+	return err
 }
 
 func (m *Memdir) ensureRoot() {
