@@ -11,7 +11,7 @@ type (
 		FileInfo
 		readBuf []byte
 		reader  *bytes.Reader
-		writer  *bytes.Buffer
+		writer  *Memwriter
 	}
 )
 
@@ -31,11 +31,15 @@ func NewWriteOnly(name string) *Memfile {
 			Name:  name,
 			IsDir: false,
 		},
-		writer: &bytes.Buffer{},
 	}
 }
 
 func (f *Memfile) Stat() (FileInfo, error) {
+	if f.readBuf != nil {
+		f.FileInfo.Size = uint64(len(f.readBuf))
+	} else if f.writer != nil {
+		f.FileInfo.Size = uint64(len(f.writer.buf))
+	}
 	return f.FileInfo, nil
 }
 
@@ -43,10 +47,14 @@ func (f *Memfile) Seek(offset int64, whence int) (int64, error) {
 	if whence != 0 {
 		return 0, errors.New("seek only from starting of file")
 	}
-	if f.reader == nil {
-		return 0, errors.New("seek only on readers")
+
+	switch {
+	case f.writer != nil:
+		return f.writer.Seek(offset, whence)
+	case f.reader != nil:
+		return f.reader.Seek(offset, whence)
 	}
-	return f.reader.Seek(offset, whence)
+	return 0, errors.New("invalid state")
 }
 
 func (f *Memfile) Read(out []byte) (int, error) {
@@ -67,7 +75,7 @@ func (f *Memfile) Open() error {
 	if len(f.readBuf) > 0 {
 		f.reader = bytes.NewReader(f.readBuf)
 	} else {
-		f.writer = &bytes.Buffer{}
+		f.writer = &Memwriter{}
 	}
 	return nil
 }
@@ -83,6 +91,13 @@ func (f *Memfile) Readdir() ([]FileInfo, error) {
 
 func (f *Memfile) Walk(_ string) (File, error) {
 	return nil, errors.New("not a directory")
+}
+
+func (m *Memfile) Sync() error {
+	if m.writer == nil {
+		return errors.New("file is readonly")
+	}
+	return nil
 }
 
 func (f *Memfile) Bytes() []byte {

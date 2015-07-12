@@ -44,6 +44,7 @@ func (m *Memdir) Stat() (FileInfo, error) {
 	return FileInfo{
 		Name:  m.ns.root.name,
 		IsDir: true,
+		Size:  0,
 	}, nil
 }
 
@@ -67,7 +68,12 @@ func (m *Memdir) Close() error {
 	return nil
 }
 
+func (m *Memdir) Sync() error {
+	return nil
+}
+
 func (m *Memdir) AddFile(f File) error {
+	m.ensureRoot()
 	stat, err := f.Stat()
 	if err != nil {
 		return err

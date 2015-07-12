@@ -59,14 +59,15 @@ func main() {
 	}
 }
 
-func ensureFileExists(fs *client.Fsys, name string) {
-	err := fs.Access(name, plan9.AEXIST)
+func ensureFileExists(fsys *client.Fsys, name string) {
+	fid, err := fsys.Open(name, plan9.OWRITE)
 	if err == nil {
+		fid.Close()
 		// file exists, nothing to do here
 		return
 	}
 	// maybe the file don't exist, try to create it
-	fid, err := fs.Create(name, plan9.OWRITE, plan9.Perm(0644))
+	fid, err = fsys.Create(name, plan9.OWRITE, plan9.Perm(0644))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to create file on server. %v", err)
 	}

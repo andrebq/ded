@@ -27,6 +27,7 @@ type (
 		Write(in []byte) (int, error)
 		Readdir() ([]FileInfo, error)
 		Walk(n string) (File, error)
+		Sync() error
 	}
 
 	FileRef struct {
@@ -37,6 +38,7 @@ type (
 	FileInfo struct {
 		Name  string
 		IsDir bool
+		Size  uint64
 	}
 )
 
