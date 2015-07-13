@@ -34,6 +34,13 @@ func (ufs *Ufs) Walk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	ret.Type++
 
 	parent := ufs.Root
+	// check if we have a fid from a previous walk
+	if fd := ufs.GetFid(fc.Fid, ctx); fd != nil {
+		switch fd := fd.(type) {
+		case *ufsFid:
+			parent = fd.fullpath
+		}
+	}
 	for _, name := range fc.Wname {
 		file, err := os.Stat(filepath.Join(parent, name))
 		if err != nil {

@@ -71,6 +71,15 @@ func NewTCPServer(fs RPC, bindAddr string) (*Server, error) {
 	return s, nil
 }
 
+func NewPipeServer(fs RPC, in io.ReadCloser, out io.WriteCloser) {
+	s := &Server{
+		fs:      fs,
+		closeCh: make(chan signal, 1),
+		errors:  make(chan error, 1),
+	}
+	go s.servePipe(in, out)
+}
+
 func (s *Server) accept() {
 	for {
 		conn, err := s.listener.Accept()
@@ -103,6 +112,31 @@ LOOP:
 				"module": "vfs.Server",
 			}).Errorf("Server Error", err)
 		}
+	}
+}
+
+func (s *Server) servePipe(in io.ReadCloser, out io.WriteCloser) {
+	runtime.LockOSThread()
+	ctx := NewContext()
+
+	for {
+		select {
+		case <-s.closeCh:
+			in.Close()
+			out.Close()
+		default:
+			// do nothing
+		}
+		fc, err := plan9.ReadFcall(in)
+		if err != nil {
+			s.fs.ReleaseContext(ctx)
+			return
+		}
+
+		log.WithFields(log.Fields{}).Debugf(">> %v", fc)
+		fc = s.fs.Call(fc, ctx)
+		log.WithFields(log.Fields{}).Debugf("<< %v", fc)
+		plan9.WriteFcall(out, fc)
 	}
 }
 

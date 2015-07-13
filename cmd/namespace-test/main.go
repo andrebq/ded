@@ -1,7 +1,8 @@
 package main
 
 import (
-	"amoraes.info/ded/vfs"
+	"9fans.net/go/plan9"
+	"9fans.net/go/plan9/client"
 	"amoraes.info/ded/vfs/namespace"
 	"flag"
 	log "github.com/Sirupsen/logrus"
@@ -30,40 +31,51 @@ func (s *sysnameHook) Fire(e *log.Entry) error {
 }
 
 var (
-	addr  = flag.String("addr", ":5640", "Address to bind")
 	debug = flag.Bool("debug", false, "Debug mode")
+	addr1 = flag.String("addr1", ":5640", "First address")
+	addr2 = flag.String("addr2", ":5641", "Second address")
 )
 
 func main() {
 	flag.Parse()
-	ns := namespace.NewNamespace()
-	fs := namespace.NewFS(ns)
 	if *debug {
 		log.SetLevel(log.DebugLevel)
 	}
 	log.WithFields(log.Fields{
-		"address": *addr,
-	}).Infof("Starting server...")
-
-	mdir := namespace.Memdir{}
-	rdonly := namespace.NewReadOnly(`hello`, []byte(`hello`))
-	wronly := namespace.NewWriteOnly(`blackhole`)
-	mdir.AddFile(rdonly)
-	mdir.AddFile(wronly)
-
-	err := ns.Mount("dir", "", &mdir)
+		"address":  *addr1,
+		"address2": *addr2,
+	}).Infof("Connecting to server...")
+	fsys1, err := client.Mount("tcp", *addr1)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err.Error(),
-		}).Fatalf("Unable to mount mdir")
+		log.Fatalf("Unable to connect to fsys1. %v", err)
+	}
+	fsys2, err := client.Mount("tcp", *addr2)
+	if err != nil {
+		log.Fatalf("Unable to connect to fsys2. %v", err)
 	}
 
-	srv, err := vfs.NewTCPServer(&vfs.Fileserver{fs}, *addr)
+	fid1, err := fsys1.Open(".", plan9.OREAD)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err.Error(),
-		}).Fatalf("Unable to start server")
+		log.Fatalf("Unable to connect to fsys1. %v", err)
 	}
-	_ = srv
-	select {}
+	fid2, err := fsys2.Open(".", plan9.OREAD)
+	if err != nil {
+		log.Fatalf("Unable to connect to fsys2. %v", err)
+	}
+
+	ns := namespace.Namespace{}
+
+	ns.Mount("fsys1", "", fid1)
+	ns.Mount("fsys2", "", fid2)
+
+	fd1, err := ns.Walk("/fsys1/main.go")
+	if err != nil {
+		log.Fatalf("error opening /fsys1/main.go. %v", err)
+	}
+	defer fd1.Close()
+	fd2, err := ns.Walk("/fsys2/ufsd/main.go")
+	if err != nil {
+		log.Fatalf("error opening /fsys2/ufsd/main.go. %v", err)
+	}
+	defer fd2.Close()
 }
