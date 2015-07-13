@@ -19,7 +19,8 @@ func main() {
 	flag.Parse()
 	fsys, err := client.Mount("tcp", *addr)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "error mounting: %v", err)
+		os.Exit(1)
 	}
 	args := flag.Args()
 	if len(args) == 0 {
@@ -35,6 +36,7 @@ func main() {
 		fid, err := fsys.Open(name, plan9.OWRITE)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening the file: %v\n", err)
+			os.Exit(1)
 		}
 		_, err = io.Copy(fid, os.Stdin)
 		if err != nil {
@@ -45,6 +47,7 @@ func main() {
 		fid, err := fsys.Open(name, plan9.OREAD)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening the file: %v\n", err)
+			os.Exit(1)
 		}
 		_, err = io.Copy(os.Stdout, fid)
 		if err != nil {

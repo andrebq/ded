@@ -104,6 +104,7 @@ LOOP:
 			s.errors = nil
 			break LOOP
 		case conn := <-s.newconn:
+			println("new conn")
 			go s.serveConn(conn)
 		case err := <-s.errors:
 			println("error")

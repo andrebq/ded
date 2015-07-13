@@ -3,6 +3,7 @@ package main
 import (
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
+	"amoraes.info/ded/vfs"
 	"amoraes.info/ded/vfs/namespace"
 	"flag"
 	log "github.com/Sirupsen/logrus"
@@ -31,16 +32,14 @@ func (s *sysnameHook) Fire(e *log.Entry) error {
 }
 
 var (
-	debug = flag.Bool("debug", false, "Debug mode")
-	addr1 = flag.String("addr1", ":5640", "First address")
-	addr2 = flag.String("addr2", ":5641", "Second address")
+	addr1      = flag.String("addr1", ":5640", "First address")
+	addr2      = flag.String("addr2", ":5641", "Second address")
+	listenAddr = flag.String("laddr", ":5642", "Address to listen for connections")
 )
 
 func main() {
 	flag.Parse()
-	if *debug {
-		log.SetLevel(log.DebugLevel)
-	}
+	log.SetLevel(log.DebugLevel)
 	log.WithFields(log.Fields{
 		"address":  *addr1,
 		"address2": *addr2,
@@ -78,4 +77,16 @@ func main() {
 		log.Fatalf("error opening /fsys2/ufsd/main.go. %v", err)
 	}
 	defer fd2.Close()
+
+	// now that we know we can connect, let's expose the namespace
+
+	export := namespace.NewExport(&ns)
+	srv, err := vfs.NewTCPServer(&vfs.Fileserver{export}, *listenAddr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err.Error(),
+		}).Fatalf("Unable to start server")
+	}
+	_ = srv
+	select {}
 }

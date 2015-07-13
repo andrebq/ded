@@ -21,12 +21,18 @@ func NewExport(ns *Namespace) *Export {
 	}
 }
 
+func (fs *Export) isClientFid(f interface{}) bool {
+	_, ok := f.(*client.Fid)
+	return ok
+}
+
 func (fs *Export) Walk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	ret := *fc
 	ret.Type++
 
 	oldfid := fs.GetFid(fc.Fid, ctx)
-	if oldfid != nil {
+	if fs.isClientFid(oldfid) {
+		println("valid fid, walk from this fid")
 		// continue from the old fid found
 		fid, err := oldfid.(*client.Fid).Walk(path.Join(fc.Wname...))
 		if err != nil {
@@ -39,9 +45,15 @@ func (fs *Export) Walk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 		return &ret
 	}
 
+	println("namespace walk")
 	fid, err := fs.ns.Walk(path.Join(fc.Wname...))
 	if err != nil {
+		println("got error")
 		return vfs.PackError(&ret, err)
+	}
+	println("setting fid", fid)
+	for _, _ = range fc.Wname {
+		ret.Wqid = append(ret.Wqid, plan9.Qid{})
 	}
 	fs.SetFid(ctx, fc.Fid, fid)
 	return &ret
