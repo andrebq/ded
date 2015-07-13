@@ -26,6 +26,21 @@ func (fs *Export) isClientFid(f interface{}) bool {
 	return ok
 }
 
+func (fs *Export) Open(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
+	ret := *fc
+	ret.Type++
+
+	fid := fs.GetFid(fc.Fid, ctx).(*client.Fid)
+
+	err := fid.Open(fc.Mode)
+	if err != nil {
+		return vfs.PackError(&ret, err)
+	}
+	ret.Iounit = 8168
+
+	return &ret
+}
+
 func (fs *Export) Walk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	ret := *fc
 	ret.Type++
@@ -39,7 +54,7 @@ func (fs *Export) Walk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 			return vfs.PackError(&ret, err)
 		}
 		oldfid.(*client.Fid).Close()
-		fs.SetFid(ctx, fc.Fid, fid)
+		fs.SetFid(ctx, fc.Newfid, fid)
 
 		// should populate the Wqid here
 		return &ret
@@ -55,6 +70,6 @@ func (fs *Export) Walk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	for _, _ = range fc.Wname {
 		ret.Wqid = append(ret.Wqid, plan9.Qid{})
 	}
-	fs.SetFid(ctx, fc.Fid, fid)
+	fs.SetFid(ctx, fc.Newfid, fid)
 	return &ret
 }
