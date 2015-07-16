@@ -5,6 +5,7 @@ import (
 	"9fans.net/go/plan9/client"
 	"amoraes.info/ded/vfs"
 	"amoraes.info/ded/vfs/mixin"
+	"io"
 	"path"
 )
 
@@ -37,6 +38,58 @@ func (fs *Export) Open(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 		return vfs.PackError(&ret, err)
 	}
 	ret.Iounit = 8168
+
+	return &ret
+}
+
+func (fs *Export) Create(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
+	ret := *fc
+	ret.Type++
+
+	fid := fs.GetFid(fc.Fid, ctx).(*client.Fid)
+
+	err := fid.Create(fc.Name, fc.Mode, fc.Perm)
+	if err != nil {
+		return vfs.PackError(&ret, err)
+	}
+	ret.Iounit = 8168
+
+	return &ret
+}
+
+func (fs *Export) Write(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
+	ret := *fc
+	ret.Type++
+
+	fid := fs.GetFid(fc.Fid, ctx).(*client.Fid)
+
+	sz, err := fid.WriteAt(fc.Data, int64(fc.Offset))
+	if err != nil {
+		return vfs.PackError(&ret, err)
+	}
+	ret.Count = uint32(sz)
+
+	return &ret
+}
+
+func (fs *Export) Read(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
+	ret := *fc
+	ret.Type++
+
+	fid := fs.GetFid(fc.Fid, ctx).(*client.Fid)
+	buf := make([]byte, fc.Count)
+
+	sz, err := fid.ReadAt(buf, int64(fc.Offset))
+	if err != nil {
+		if err == io.EOF {
+			ret.Count = 0
+			ret.Data = nil
+			return &ret
+		}
+		return vfs.PackError(&ret, err)
+	}
+	ret.Count = uint32(sz)
+	ret.Data = buf
 
 	return &ret
 }

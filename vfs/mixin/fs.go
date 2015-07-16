@@ -3,6 +3,7 @@ package mixin
 import (
 	"9fans.net/go/plan9"
 	"amoraes.info/ded/vfs"
+	log "github.com/Sirupsen/logrus"
 	"io"
 )
 
@@ -31,11 +32,19 @@ func (fs *FS) ValidFid(fc *plan9.Fcall, ctx *vfs.Context) bool {
 }
 
 func (fs *FS) ReleaseFid(fid uint32, ctx *vfs.Context) error {
+	log.WithFields(log.Fields{
+		"Fid":    fid,
+		"Module": "mixin.FS",
+	}).Debugf("Releasing fid")
 	defer func(ctx *vfs.Context, fid uint32) { delete((ctx.MustGet(fids).(fidMap)), fid) }(ctx, fid)
 	fd := fs.GetFid(fid, ctx)
 	if fd != nil {
 		switch fd := fd.(type) {
 		case io.Closer:
+			log.WithFields(log.Fields{
+				"Fid":    fid,
+				"Module": "mixin.FS",
+			}).Debugf("Fid is a Closer")
 			err := fd.Close()
 			if err != nil {
 				return err
@@ -68,9 +77,13 @@ func (fs *FS) Auth(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 }
 
 func (fs *FS) Clunk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
+	println("cluking fid", fc.Fid)
 	ret := *fc
 	ret.Type++
-	fs.ReleaseFid(fc.Fid, ctx)
+	if err := fs.ReleaseFid(fc.Fid, ctx); err != nil {
+		println("error on release", err.Error())
+		return vfs.PackError(&ret, err)
+	}
 	return &ret
 }
 
@@ -138,10 +151,26 @@ func (fs *FS) Walk(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 }
 
 func (fs *FS) ReleaseContext(ctx *vfs.Context) error {
+	log.WithFields(log.Fields{
+		"Module": "mixin.FS",
+	}).Debugf("Releasing context data")
+	if _, ok := ctx.Get(fids); !ok {
+		log.WithFields(log.Fields{
+			"Module": "mixin.FS",
+		}).Debugf("No fid to release")
+		return nil
+	}
 	fids := ctx.MustGet(fids).(fidMap)
 	var firstErr error
 	for k, _ := range fids {
 		err := fs.ReleaseFid(k, ctx)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"Fid":    k,
+				"Module": "mixin.FS",
+				"Err":    err,
+			}).Errorf("ReleaseFid error")
+		}
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}

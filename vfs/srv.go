@@ -56,8 +56,15 @@ type (
 )
 
 func NewTCPServer(fs RPC, bindAddr string) (*Server, error) {
+	log.WithFields(log.Fields{
+		"addr": bindAddr,
+		"fs":   fs,
+	}).Infof("Starting server")
 	lst, err := net.Listen("tcp", bindAddr)
 	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Errorf("Unable to start TCP server")
 		return nil, err
 	}
 	s := &Server{
@@ -71,13 +78,20 @@ func NewTCPServer(fs RPC, bindAddr string) (*Server, error) {
 	return s, nil
 }
 
-func NewPipeServer(fs RPC, in io.ReadCloser, out io.WriteCloser) {
+func NewServer(fs RPC, listener net.Listener) (*Server, error) {
+	log.WithFields(log.Fields{
+		"listener": listener,
+		"fs":       fs,
+	}).Infof("Starting server")
 	s := &Server{
-		fs:      fs,
-		closeCh: make(chan signal, 1),
-		errors:  make(chan error, 1),
+		listener: listener,
+		fs:       fs,
+		closeCh:  make(chan signal, 1),
+		newconn:  make(chan net.Conn, 0),
+		errors:   make(chan error, 1),
 	}
-	go s.servePipe(in, out)
+	go s.serve()
+	return s, nil
 }
 
 func (s *Server) accept() {
@@ -104,58 +118,41 @@ LOOP:
 			s.errors = nil
 			break LOOP
 		case conn := <-s.newconn:
-			println("new conn")
 			go s.serveConn(conn)
 		case err := <-s.errors:
-			println("error")
+			if err == nil {
+				continue
+			}
 			log.WithFields(log.Fields{
 				"error":  err,
 				"module": "vfs.Server",
-			}).Errorf("Server Error", err)
+			}).Errorf("Server Error")
 		}
-	}
-}
-
-func (s *Server) servePipe(in io.ReadCloser, out io.WriteCloser) {
-	runtime.LockOSThread()
-	ctx := NewContext()
-
-	for {
-		select {
-		case <-s.closeCh:
-			in.Close()
-			out.Close()
-		default:
-			// do nothing
-		}
-		fc, err := plan9.ReadFcall(in)
-		if err != nil {
-			s.fs.ReleaseContext(ctx)
-			return
-		}
-
-		log.WithFields(log.Fields{}).Debugf(">> %v", fc)
-		fc = s.fs.Call(fc, ctx)
-		log.WithFields(log.Fields{}).Debugf("<< %v", fc)
-		plan9.WriteFcall(out, fc)
 	}
 }
 
 func (s *Server) serveConn(conn net.Conn) {
+	log.WithFields(log.Fields{
+		"client": conn.RemoteAddr(),
+		"module": "vfs.Server",
+	}).Infof("New client connected")
 	runtime.LockOSThread()
 	ctx := NewContext()
 	for {
 		addr := conn.RemoteAddr()
 		fc, err := plan9.ReadFcall(conn)
 		if err != nil {
-			if err == io.EOF {
-				err = s.fs.ReleaseContext(ctx)
-				if err != nil {
-					s.errors <- err
-				}
-				break
+			if err != io.EOF {
+				s.errors <- err
+			} else {
+				log.WithFields(log.Fields{
+					"client": addr,
+				}).Infof("Connection closed")
 			}
-			s.errors <- err
+			if err := s.fs.ReleaseContext(ctx); err != nil {
+				s.errors <- err
+			}
+
 			s.errors <- conn.Close()
 			break
 		}

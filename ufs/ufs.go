@@ -79,6 +79,7 @@ func (ufs *Ufs) Create(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	ret.Type++
 
 	data := ufs.GetFid(fc.Fid, ctx).(*ufsFid)
+	println("data.fullpath", data.fullpath)
 	openmode := DirModeToOSMode(uint32(fc.Mode))
 
 	perm := fc.Perm
@@ -96,6 +97,7 @@ func (ufs *Ufs) Create(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 		}
 	}
 
+	data.fullpath = filepath.Join(data.fullpath, fc.Name)
 	file, err := os.OpenFile(data.fullpath, openmode|os.O_CREATE, unixPerm)
 	if err != nil {
 		return vfs.PackError(&ret, err)

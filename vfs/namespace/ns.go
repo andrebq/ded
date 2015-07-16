@@ -3,7 +3,7 @@ package namespace
 import (
 	"9fans.net/go/plan9/client"
 	"errors"
-	"fmt"
+	"path"
 	"strings"
 )
 
@@ -26,7 +26,6 @@ func (ns *Namespace) Mount(name string, parent string, fid *client.Fid) error {
 	if root.FindChild(name) != nil {
 		return errors.New("name is duplicated")
 	}
-	println("add", name, "to", ns.mounts.Name, "with fid", fid)
 	root = root.AddChild(name)
 	root.Fid = fid
 	return nil
@@ -39,9 +38,9 @@ func (ns *Namespace) Mount(name string, parent string, fid *client.Fid) error {
 func (ns *Namespace) Walk(p string) (*client.Fid, error) {
 	var searchFid *client.Fid
 	root := &ns.mounts
+	p = path.Join("/", p)
 	parts := strings.Split(p, "/")
 	fid, parts := root.findLongestMatch(parts)
-	println("fid", fid, "parts", fmt.Sprintf("%v", parts))
 
 	if fid == nil {
 		return nil, errors.New("path not found")
@@ -56,7 +55,6 @@ func (ns *Namespace) Walk(p string) (*client.Fid, error) {
 		}
 		defer searchFid.Close()
 		for i, s := range parts {
-			println("fid walk", s)
 			searchFid, err = searchFid.Walk(s)
 			if err != nil {
 				return nil, err

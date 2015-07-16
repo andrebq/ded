@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
@@ -33,7 +34,8 @@ func main() {
 	var fid *client.Fid
 	if *write {
 		ensureFileExists(fsys, name)
-		fid, err := fsys.Open(name, plan9.OWRITE)
+		var err error
+		fid, err = fsys.Open(name, plan9.OWRITE)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening the file: %v\n", err)
 			os.Exit(1)
@@ -44,7 +46,8 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		fid, err := fsys.Open(name, plan9.OREAD)
+		var err error
+		fid, err = fsys.Open(name, plan9.OREAD)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening the file: %v\n", err)
 			os.Exit(1)
@@ -69,10 +72,21 @@ func ensureFileExists(fsys *client.Fsys, name string) {
 		// file exists, nothing to do here
 		return
 	}
+	pdir, fname := path.Split(name)
 	// maybe the file don't exist, try to create it
-	fid, err = fsys.Create(name, plan9.OWRITE, plan9.Perm(0644))
+	// at the parent location
+	fid, err = fsys.Open(pdir, plan9.OREAD)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to create file on server. %v", err)
+		fmt.Fprintf(os.Stderr, "Unable to navigate to parent directory. %v\n", err)
+		os.Exit(1)
+	}
+	// no need to hang with parent directory
+	defer fid.Close()
+
+	err = fid.Create(fname, plan9.OWRITE, plan9.Perm(0644))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to create file on server. %v\n", err)
+		os.Exit(1)
 	}
 	// file created by now, release the fid and continue
 	fid.Close()

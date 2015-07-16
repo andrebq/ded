@@ -2,7 +2,9 @@ package main
 
 import (
 	"amoraes.info/ded/vfs"
+	"amoraes.info/ded/vfs/namespace"
 	"bytes"
+	"flag"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/andrebq/gas"
@@ -87,6 +89,17 @@ func appMain(driver gxui.Driver) {
 	el.AddChild(dedEditor)
 	el.SetChildSize(dedEditorBar, math.Size{H: dedEditorBar.LineHeight()})
 
+	editorfs := &EditorFS{
+		editor: dedEditor,
+		bar:    dedEditorBar,
+	}
+	log.Infof("Exporting fs")
+	err := editorfs.ExportAt(&dedNamespace, "active")
+	log.Infof("EditorFS exported")
+	if err != nil {
+		log.Fatalf("Unable to export editor fs: %v", err)
+	}
+
 	/*
 		TODO(andre): this code requires the proper namespace implementation,
 		don't expose the FS.
@@ -112,16 +125,28 @@ func appMain(driver gxui.Driver) {
 
 var (
 	rootCli *vfs.Client
+
+	dedNamespace namespace.Namespace
+	listenAddr   = flag.String("addr", ":5640", "Address to listen for incoming data")
 )
 
 func main() {
 	log.SetLevel(log.DebugLevel)
 	fmt.Printf("")
+
+	export := namespace.NewExport(&dedNamespace)
+	srv, err := vfs.NewTCPServer(&vfs.Fileserver{export}, *listenAddr)
+	if err != nil {
+		log.Fatalf("Unable to start Ded tcp server. %v", err)
+	}
+	_ = srv
 	gl.StartDriver(appMain)
+	srv.Close()
 }
 
 func println(vals ...interface{}) {
 	buf := &bytes.Buffer{}
+	fmt.Fprintf(buf, "!PRINTLN!\t")
 	for idx, v := range vals {
 		if idx == 0 {
 			fmt.Fprintf(buf, "%v", v)
@@ -129,7 +154,6 @@ func println(vals ...interface{}) {
 		}
 		fmt.Fprintf(buf, " %v", v)
 	}
-	fmt.Fprintf(buf, "\n")
 
 	log.Debugf("%v", string(buf.Bytes()))
 }
