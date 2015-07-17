@@ -3,6 +3,7 @@ package main
 import (
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
+	"amoraes.info/ded/buffer"
 	"amoraes.info/ded/vfs"
 	"amoraes.info/ded/vfs/memlistener"
 	"amoraes.info/ded/vfs/mixin"
@@ -22,13 +23,22 @@ type (
 	}
 
 	editorFid struct {
-		name string
-		mode uint8
+		name   string
+		mode   uint8
+		editor *DedEditor
 
-		writer *bytes.Buffer
+		writer *buffer.B
 		reader *bytes.Reader
 	}
 )
+
+func (efid *editorFid) Close() error {
+	if efid.mode == plan9.OWRITE && efid.writer != nil && efid.editor != nil {
+		// flush the changes to the editor
+		efid.editor.SetText(string(efid.writer.Bytes()))
+	}
+	return nil
+}
 
 func (fs *EditorFS) ExportAt(ns *namespace.Namespace, name string) error {
 	var closelist []io.Closer
@@ -163,16 +173,18 @@ func (fs *EditorFS) Open(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 
 	switch fd.name {
 	case "body":
+		fd.editor = fs.editor
 		if fc.Mode == plan9.OREAD {
 			fd.reader = bytes.NewReader([]byte(fs.editor.Text()))
 		} else {
-			fd.writer = &bytes.Buffer{}
+			fd.writer = &buffer.B{}
 		}
 	case "header":
+		fd.editor = fs.bar
 		if fc.Mode == plan9.OREAD {
 			fd.reader = bytes.NewReader([]byte(fs.bar.Text()))
 		} else {
-			fd.writer = &bytes.Buffer{}
+			fd.writer = &buffer.B{}
 		}
 	}
 	return &ret
@@ -196,21 +208,16 @@ func (fs *EditorFS) Read(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	return &ret
 }
 
-/*
 func (fs *EditorFS) Write(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	ret := *fc
 	ret.Type++
 	fd := fs.GetFid(fc.Fid, ctx).(*editorFid)
 
-	if fc.Offset != uint64(fd.writer.Len()) {
-		return vfs.PackError(&ret, errors.New("cannot write to the middle of the buffer"))
+	_, err := fd.writer.Seek(int64(fc.Offset), 0)
+	if err != nil {
+		return vfs.PackError(&ret, err)
 	}
-
-	fd.Writer.Seek(int64(fc.Offset), 0)
-	ret.Data = make([]byte, int(fc.Count))
-	n, _ := fd.reader.Read(ret.Data)
-	ret.Data = ret.Data[:n]
+	n, _ := fd.writer.Write(fc.Data)
 	ret.Count = uint32(n)
 	return &ret
 }
-*/
