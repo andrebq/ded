@@ -7,6 +7,8 @@ import (
 	"amoraes.info/ded/vfs/memlistener"
 	"amoraes.info/ded/vfs/mixin"
 	"amoraes.info/ded/vfs/namespace"
+	"bytes"
+	"errors"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"io"
@@ -21,6 +23,10 @@ type (
 
 	editorFid struct {
 		name string
+		mode uint8
+
+		writer *bytes.Buffer
+		reader *bytes.Reader
 	}
 )
 
@@ -144,7 +150,67 @@ func (fs *EditorFS) Open(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
 	switch fd.name {
 	case ".":
 		return &ret
+	case "body", "header":
+		switch fc.Mode {
+		case plan9.OREAD, plan9.OWRITE:
+			fd.mode = fc.Mode
+		default:
+			return vfs.PackError(&ret, fmt.Errorf("invalid mode"))
+		}
 	default:
 		return vfs.PackError(&ret, fmt.Errorf("fid %v cannot be opened", fc.Fid))
 	}
+
+	switch fd.name {
+	case "body":
+		if fc.Mode == plan9.OREAD {
+			fd.reader = bytes.NewReader([]byte(fs.editor.Text()))
+		} else {
+			fd.writer = &bytes.Buffer{}
+		}
+	case "header":
+		if fc.Mode == plan9.OREAD {
+			fd.reader = bytes.NewReader([]byte(fs.bar.Text()))
+		} else {
+			fd.writer = &bytes.Buffer{}
+		}
+	}
+	return &ret
 }
+
+func (fs *EditorFS) Read(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
+	ret := *fc
+	ret.Type++
+	fd := fs.GetFid(fc.Fid, ctx).(*editorFid)
+	switch fd.name {
+	case ".":
+		// handle the directory listing later
+		return vfs.PackError(&ret, errors.New("cannot read root"))
+	}
+
+	fd.reader.Seek(int64(fc.Offset), 0)
+	ret.Data = make([]byte, int(fc.Count))
+	n, _ := fd.reader.Read(ret.Data)
+	ret.Data = ret.Data[:n]
+	ret.Count = uint32(n)
+	return &ret
+}
+
+/*
+func (fs *EditorFS) Write(fc *plan9.Fcall, ctx *vfs.Context) *plan9.Fcall {
+	ret := *fc
+	ret.Type++
+	fd := fs.GetFid(fc.Fid, ctx).(*editorFid)
+
+	if fc.Offset != uint64(fd.writer.Len()) {
+		return vfs.PackError(&ret, errors.New("cannot write to the middle of the buffer"))
+	}
+
+	fd.Writer.Seek(int64(fc.Offset), 0)
+	ret.Data = make([]byte, int(fc.Count))
+	n, _ := fd.reader.Read(ret.Data)
+	ret.Data = ret.Data[:n]
+	ret.Count = uint32(n)
+	return &ret
+}
+*/
