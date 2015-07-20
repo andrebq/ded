@@ -231,6 +231,17 @@ func (de *DedEditor) RenderCaret(cv gxui.Canvas) {
 	cv.DrawRect(rect, gxui.CreateBrush(gxui.White))
 }
 
+func (de *DedEditor) HandleEnter(ev gxui.KeyboardEvent) {
+	controller := de.controller
+	switch {
+	case ev.Modifier.Control():
+		// execute the selection
+		controller.ExecuteSelection()
+	default:
+		controller.ReplaceWithNewlineKeepIndent()
+	}
+}
+
 func (de *DedEditor) HandleMovement(dir Direction, isSelect, moveByWord bool) {
 	controller := de.controller
 	switch {
@@ -320,7 +331,7 @@ func (de *DedEditor) KeyPress(ev gxui.KeyboardEvent) (consumed bool) {
 	case gxui.KeyDelete:
 		controller.Delete()
 	case gxui.KeyEnter:
-		controller.ReplaceWithNewlineKeepIndent()
+		de.HandleEnter(ev)
 	case gxui.KeyTab:
 		controller.ReplaceAllRunes([]rune{'\t'})
 		controller.ClearSelections()
